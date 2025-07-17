@@ -7,6 +7,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { colors } from '@/constants/colors';
 import useAuth from '@/hooks/useAuth';
 
@@ -51,58 +52,57 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="dark" />
-      <RootLayoutNav initialRoute={initialRoute} />
-    </View>
-  );
-}
-
-function RootLayoutNav({ initialRoute }: { initialRoute: string }) {
-  return (
-    <Stack
-      screenOptions={{
-        headerBackTitle: "Back",
-        headerStyle: {
-          backgroundColor: colors.background,
-        },
-        headerShadowVisible: false,
-        headerTintColor: colors.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
-        contentStyle: {
-          backgroundColor: colors.background,
-        },
-      }}
-      initialRouteName={initialRoute}
-    >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="auth" options={{ headerShown: false }} />
-      <Stack.Screen 
-        name="product/[id]" 
-        options={{ 
-          title: "Product Details",
-          animation: 'slide_from_right',
-        }} 
-      />
-      <Stack.Screen 
-        name="category/[id]" 
-        options={{ 
-          title: "Category",
-          animation: 'slide_from_right',
-        }} 
-      />
-      <Stack.Screen 
-        name="profile/setup" 
-        options={{ 
-          title: "Complete Your Profile",
-          headerBackVisible: false,
-        }} 
-      />
-      <Stack.Screen name="modal" options={{ presentation: "modal" }} />
-    </Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <RorkErrorBoundary>
+        <View style={styles.container}>
+          <StatusBar style="auto" />
+          <Stack
+            screenOptions={{
+              headerBackTitle: "Back",
+              headerStyle: {
+                backgroundColor: colors.background,
+              },
+              headerShadowVisible: false,
+              headerTintColor: colors.text,
+              headerTitleStyle: {
+                fontWeight: '600',
+              },
+              contentStyle: {
+                backgroundColor: colors.background,
+              },
+            }}
+            initialRouteName={initialRoute}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen 
+              name="product/[id]" 
+              options={{ 
+                title: "Product Details",
+                animation: 'slide_from_right',
+              }} 
+            />
+            <Stack.Screen 
+              name="category/[id]" 
+              options={{ 
+                title: "Category",
+                animation: 'slide_from_right',
+              }} 
+            />
+            <Stack.Screen 
+              name="profile/setup" 
+              options={{ 
+                title: "Complete Your Profile",
+                headerBackVisible: false,
+              }} 
+            />
+            <Stack.Screen name="modal" options={{ presentation: "modal" }} />
+          </Stack>
+        </View>
+        <BundleInspector />
+      </RorkErrorBoundary>
+    </GestureHandlerRootView>
   );
 }
 
