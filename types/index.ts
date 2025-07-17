@@ -11,6 +11,8 @@ export interface User {
   verified: boolean;
   rating: number;
   joinedDate: string;
+  swapCount?: number;
+  rentCount?: number;
 }
 
 export interface Category {
@@ -44,6 +46,24 @@ export interface Product {
   rating: number;
   reviews: number;
   featured?: boolean;
+  swapOnly?: boolean;
+  tags?: string[];
+}
+
+export interface SwapRequest {
+  id: string;
+  requestedProduct: Product;
+  offeredProduct: Product;
+  requester: User;
+  owner: User;
+  status: 'pending' | 'accepted' | 'declined' | 'completed' | 'cancelled';
+  message?: string;
+  swapDuration?: {
+    startDate: string;
+    endDate: string;
+  };
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Booking {
@@ -56,6 +76,8 @@ export interface Booking {
   totalPrice: number;
   paymentStatus: 'pending' | 'paid' | 'refunded';
   createdAt: string;
+  type: 'rental' | 'swap';
+  swapRequest?: SwapRequest;
 }
 
 export interface OnboardingSlide {
@@ -79,6 +101,13 @@ export type ProductMessage = {
   timestamp: string;
 };
 
+export type SwapMessage = {
+  id: string;
+  type: 'swap';
+  swapRequest: SwapRequest;
+  timestamp: string;
+};
+
 export type TextMessage = {
   id: string;
   type: 'text';
@@ -87,4 +116,30 @@ export type TextMessage = {
   timestamp: string;
 };
 
-export type ChatMessage = SystemMessage | ProductMessage | TextMessage;
+export type ChatMessage = SystemMessage | ProductMessage | SwapMessage | TextMessage;
+
+export interface Chat {
+  id: string;
+  participants: User[];
+  messages: ChatMessage[];
+  product?: Product;
+  swapRequest?: SwapRequest;
+  lastMessage?: ChatMessage;
+  unreadCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FilterOptions {
+  priceRange?: {
+    min: number;
+    max: number;
+  };
+  distance?: number;
+  categories?: string[];
+  condition?: ('new' | 'like new' | 'good' | 'fair')[];
+  swapOnly?: boolean;
+  rentalOnly?: boolean;
+  available?: boolean;
+  rating?: number;
+}

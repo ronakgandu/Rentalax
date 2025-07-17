@@ -1,32 +1,75 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Image,
-  TextInput,
-  FlatList,
   Dimensions,
+  StatusBar,
+  Alert,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { Search, MapPin, Star, Heart, Filter } from 'lucide-react-native';
+import { 
+  MapPin, 
+  Filter, 
+  Search, 
+  Layers,
+  Navigation,
+  RefreshCw,
+  Star,
+  Heart
+} from 'lucide-react-native';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import BottomSheet, { BottomSheetView, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { colors } from '@/constants/colors';
-import { mockProducts, mockCategories } from '@/mocks/data';
-import { Product, Category } from '@/types';
+import { mockProducts } from '@/mocks/data';
+import { Product } from '@/types';
 import ProductCard from '@/components/ProductCard';
-import CategoryCard from '@/components/CategoryCard';
+import * as Location from 'expo-location';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+
+// Sample coordinates for San Francisco
+const DEFAULT_REGION = {
+  latitude: 37.7749,
+  longitude: -122.4194,
+  latitudeDelta: 0.0922,
+  longitudeDelta: 0.0421,
+};
+
+interface MapProduct extends Product {
+  coordinates: {
+    latitude: number;
+    longitude: number;
+  };
+}
 
 export default function HomeScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [mapRegion, setMapRegion] = useState(DEFAULT_REGION);
+  const [selectedProduct, setSelectedProduct] = useState<MapProduct | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const mapRef = useRef<MapView>(null);
+  
+  // Create map products with coordinates
+  const mapProducts: MapProduct[] = mockProducts
+    .filter(product => product.coordinates)
+    .map(product => ({
+      ...product,
+      coordinates: product.coordinates!
+    }));
 
-  const featuredProducts = mockProducts.filter(product => product.featured);
-  const nearbyProducts = mockProducts.slice(0, 6);
+  const featuredProducts = mapProducts.filter(product => product.featured);
+  const nearbyProducts = mapProducts.slice(0, 8);
+
+  const snapPoints = React.useMemo(() => ['15%', '50%', '90%'], []);
+
+  const handleSheetChanges = useCallback((index: number) => {
+    console.log('handleSheetChanges', index);
+  }, []);
 
   const toggleFavorite = (productId: string) => {
     const newFavorites = new Set(favorites);
@@ -38,55 +81,80 @@ export default function HomeScreen() {
     setFavorites(newFavorites);
   };
 
-  const renderFeaturedItem = ({ item }: { item: Product }) => (
-    <TouchableOpacity style={styles.featuredCard}>
-      <Image source={{ uri: item.images[0] }} style={styles.featuredImage} />
-      <TouchableOpacity 
-        style={styles.favoriteButton}
-        onPress={() => toggleFavorite(item.id)}
-      >
-        <Heart 
-          size={20} 
-          color={favorites.has(item.id) ? colors.error : 'white'}
-          fill={favorites.has(item.id) ? colors.error : 'transparent'}
-        />
-      </TouchableOpacity>
-      <View style={styles.featuredContent}>
-        <Text style={styles.featuredTitle} numberOfLines={2}>{item.title}</Text>
-        <View style={styles.featuredMeta}>
-          <View style={styles.ratingContainer}>
-            <Star size={14} color={colors.warning} fill={colors.warning} />
-            <Text style={styles.ratingText}>{item.rating}</Text>
-          </View>
-          <Text style={styles.priceText}>${item.price}/{item.priceUnit}</Text>
-        </View>
-        <View style={styles.locationContainer}>
-          <MapPin size={12} color={colors.textSecondary} />
-          <Text style={styles.locationText}>{item.location}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
+  const handleMarkerPress = (product: MapProduct) => {
+    setSelectedProduct(product);
+    bottomSheetRef.current?.snapToIndex(1);
+    
+    // Animate to marker location
+    mapRef.current?.animateToRegion({
+      latitude: product.coordinates.latitude,
+      longitude: product.coordinates.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }, 1000);
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Permission to access location was denied');
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      const userCoords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      
+      setUserLocation(userCoords);
+      setMapRegion({
+        ...userCoords,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      });
+      
+      mapRef.current?.animateToRegion({
+        ...userCoords,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      }, 1000);
+    } catch (error) {
+      console.error('Error getting location:', error);
+    }
+  };
+
+  const renderProductItem = ({ item }: { item: MapProduct }) => (
+    <View style={styles.productItem}>
+      <ProductCard 
+        product={item}
+        onPress={() => setSelectedProduct(item)}
+        onFavoritePress={() => toggleFavorite(item.id)}
+        isFavorite={favorites.has(item.id)}
+      />
+    </View>
   );
 
-  const renderCategoryItem = ({ item }: { item: Category }) => (
-    <TouchableOpacity 
-      style={[
-        styles.categoryChip,
-        selectedCategory === item.id && styles.categoryChipSelected
-      ]}
-      onPress={() => setSelectedCategory(selectedCategory === item.id ? null : item.id)}
-    >
-      <Text style={[
-        styles.categoryChipText,
-        selectedCategory === item.id && styles.categoryChipTextSelected
-      ]}>
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  );
+  const renderSelectedProduct = () => {
+    if (!selectedProduct) return null;
+    
+    return (
+      <View style={styles.selectedProductCard}>
+        <ProductCard 
+          product={selectedProduct}
+          onPress={() => console.log('Open product details')}
+          onFavoritePress={() => toggleFavorite(selectedProduct.id)}
+          isFavorite={favorites.has(selectedProduct.id)}
+          size="large"
+        />
+      </View>
+    );
+  };
 
   return (
     <>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       <Stack.Screen 
         options={{
           title: "RentShare",
@@ -100,89 +168,103 @@ export default function HomeScreen() {
             color: colors.text,
           },
           headerRight: () => (
-            <TouchableOpacity style={styles.filterButton}>
-              <Filter size={20} color={colors.text} />
+            <TouchableOpacity style={styles.headerButton}>
+              <Search size={24} color={colors.text} />
             </TouchableOpacity>
           ),
         }} 
       />
       
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
-          <Text style={styles.welcomeTitle}>Find what you need,{"\n"}when you need it</Text>
-          <Text style={styles.welcomeSubtitle}>Rent from trusted neighbors in your community</Text>
-        </View>
-
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
-            <Search size={20} color={colors.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search for items..."
-              placeholderTextColor={colors.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        </View>
-
-        {/* Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Categories</Text>
-          <FlatList
-            data={mockCategories.slice(0, 6)}
-            renderItem={renderCategoryItem}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesList}
-          />
-        </View>
-
-        {/* Featured Items */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Items</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See all</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={featuredProducts}
-            renderItem={renderFeaturedItem}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-          />
-        </View>
-
-        {/* Nearby Items */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Near You</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See all</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.nearbyGrid}>
-            {nearbyProducts.map((product) => (
-              <ProductCard 
-                key={product.id} 
-                product={product} 
-                style={styles.nearbyCard}
-                onFavoritePress={() => toggleFavorite(product.id)}
-                isFavorite={favorites.has(product.id)}
-              />
+      <View style={styles.container}>
+        {/* Map Container */}
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            provider={PROVIDER_GOOGLE}
+            region={mapRegion}
+            mapType={mapType}
+            showsUserLocation={true}
+            showsMyLocationButton={false}
+            onRegionChangeComplete={setMapRegion}
+          >
+            {mapProducts.map((product) => (
+              <Marker
+                key={product.id}
+                coordinate={product.coordinates}
+                onPress={() => handleMarkerPress(product)}
+              >
+                <View style={styles.markerContainer}>
+                  <View style={[
+                    styles.marker,
+                    selectedProduct?.id === product.id && styles.selectedMarker
+                  ]}>
+                    <Text style={styles.markerPrice}>${product.price}</Text>
+                  </View>
+                </View>
+              </Marker>
             ))}
+          </MapView>
+
+          {/* Map Controls */}
+          <View style={styles.mapControls}>
+            <TouchableOpacity 
+              style={styles.controlButton}
+              onPress={getCurrentLocation}
+            >
+              <Navigation size={20} color={colors.text} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.controlButton}
+              onPress={() => setMapType(mapType === 'standard' ? 'satellite' : 'standard')}
+            >
+              <Layers size={20} color={colors.text} />
+            </TouchableOpacity>
           </View>
+
+          {/* Filter Button */}
+          <TouchableOpacity style={styles.filterButton}>
+            <Filter size={20} color={colors.background} />
+          </TouchableOpacity>
         </View>
 
-        {/* Bottom Spacing */}
-        <View style={styles.bottomSpacing} />
-      </ScrollView>
+        {/* Bottom Sheet */}
+        <BottomSheet
+          ref={bottomSheetRef}
+          index={0}
+          snapPoints={snapPoints}
+          onChange={handleSheetChanges}
+          backgroundStyle={styles.bottomSheetBackground}
+          handleIndicatorStyle={styles.bottomSheetIndicator}
+        >
+          <BottomSheetView style={styles.bottomSheetContent}>
+            {/* Bottom Sheet Header */}
+            <View style={styles.bottomSheetHeader}>
+              <Text style={styles.bottomSheetTitle}>
+                {selectedProduct ? selectedProduct.title : 'Discover Items Nearby'}
+              </Text>
+              <Text style={styles.bottomSheetSubtitle}>
+                {selectedProduct ? 'Tap to view details' : `${mapProducts.length} items available`}
+              </Text>
+            </View>
+
+            {/* Selected Product or Product List */}
+            {selectedProduct ? (
+              renderSelectedProduct()
+            ) : (
+              <BottomSheetFlatList
+                data={nearbyProducts}
+                renderItem={renderProductItem}
+                keyExtractor={(item) => item.id}
+                numColumns={2}
+                contentContainerStyle={styles.productList}
+                showsVerticalScrollIndicator={false}
+              />
+            )}
+          </BottomSheetView>
+        </BottomSheet>
+      </View>
     </>
   );
 }
@@ -192,171 +274,133 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  filterButton: {
+  headerButton: {
     padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.card,
-  },
-  welcomeSection: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 24,
-  },
-  welcomeTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-    lineHeight: 34,
-    marginBottom: 8,
-  },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    lineHeight: 22,
-  },
-  searchContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-  },
-  section: {
-    marginBottom: 32,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  seeAllText: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  categoriesList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  categoryChip: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.backgroundSecondary,
   },
-  categoryChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
   },
-  categoryChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-  },
-  categoryChipTextSelected: {
-    color: 'white',
-  },
-  featuredList: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  featuredCard: {
-    width: 280,
-    backgroundColor: 'white',
-    borderRadius: 16,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  featuredImage: {
+  map: {
     width: '100%',
-    height: 180,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    height: '100%',
   },
-  favoriteButton: {
+  mapControls: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    top: 20,
+    right: 16,
+    gap: 12,
+  },
+  controlButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: colors.text,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  featuredContent: {
-    padding: 16,
-  },
-  featuredTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  featuredMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  filterButton: {
+    position: 'absolute',
+    bottom: 140,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    shadowColor: colors.text,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  ratingContainer: {
-    flexDirection: 'row',
+  markerContainer: {
     alignItems: 'center',
-    gap: 4,
   },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
+  marker: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    shadowColor: colors.text,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  priceText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.primary,
+  selectedMarker: {
+    backgroundColor: colors.primary,
   },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  locationText: {
+  markerPrice: {
     fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  bottomSheetBackground: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: colors.text,
+    shadowOffset: {
+      width: 0,
+      height: -4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  bottomSheetIndicator: {
+    backgroundColor: colors.border,
+    width: 40,
+    height: 4,
+  },
+  bottomSheetContent: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  bottomSheetHeader: {
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  bottomSheetSubtitle: {
+    fontSize: 14,
     color: colors.textSecondary,
   },
-  nearbyGrid: {
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
+  selectedProductCard: {
+    marginBottom: 16,
   },
-  nearbyCard: {
-    width: (width - 56) / 2,
+  productList: {
+    paddingBottom: 100,
   },
-  bottomSpacing: {
-    height: 20,
+  productItem: {
+    flex: 1,
+    margin: 6,
   },
 });

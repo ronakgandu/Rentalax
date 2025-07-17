@@ -8,7 +8,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Star, MapPin, Heart } from 'lucide-react-native';
+import { Star, MapPin, Heart, RefreshCw } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { Product } from '@/types';
 
@@ -16,34 +16,91 @@ interface ProductCardProps {
   product: Product;
   style?: ViewStyle;
   onFavoritePress?: () => void;
+  onPress?: () => void;
   isFavorite?: boolean;
+  size?: 'small' | 'medium' | 'large';
 }
 
 export default function ProductCard({ 
   product, 
   style, 
   onFavoritePress,
-  isFavorite = false 
+  onPress,
+  isFavorite = false,
+  size = 'medium'
 }: ProductCardProps) {
   const handlePress = () => {
-    router.push(`/product/${product.id}`);
+    if (onPress) {
+      onPress();
+    } else {
+      router.push(`/product/${product.id}`);
+    }
   };
+
+  const getImageHeight = () => {
+    switch (size) {
+      case 'small': return 100;
+      case 'large': return 200;
+      default: return 140;
+    }
+  };
+
+  const getFontSizes = () => {
+    switch (size) {
+      case 'small':
+        return {
+          title: 12,
+          price: 14,
+          priceUnit: 10,
+          rating: 10,
+          location: 10,
+        };
+      case 'large':
+        return {
+          title: 18,
+          price: 20,
+          priceUnit: 14,
+          rating: 14,
+          location: 13,
+        };
+      default:
+        return {
+          title: 14,
+          price: 16,
+          priceUnit: 12,
+          rating: 12,
+          location: 11,
+        };
+    }
+  };
+
+  const fonts = getFontSizes();
 
   return (
     <TouchableOpacity 
-      style={[styles.container, style]} 
+      style={[
+        styles.container, 
+        size === 'large' && styles.largeContainer,
+        style
+      ]} 
       onPress={handlePress}
       activeOpacity={0.9}
     >
       <View style={styles.imageContainer}>
-        <Image source={{ uri: product.images[0] }} style={styles.image} />
+        <Image 
+          source={{ uri: product.images[0] }} 
+          style={[
+            styles.image, 
+            { height: getImageHeight() }
+          ]} 
+        />
         {onFavoritePress && (
           <TouchableOpacity 
             style={styles.favoriteButton}
             onPress={onFavoritePress}
           >
             <Heart 
-              size={16} 
+              size={size === 'large' ? 20 : 16} 
               color={isFavorite ? colors.error : 'white'}
               fill={isFavorite ? colors.error : 'transparent'}
             />
@@ -54,27 +111,58 @@ export default function ProductCard({
             <Text style={styles.featuredText}>Featured</Text>
           </View>
         )}
+        {product.allowBarter && (
+          <View style={styles.swapBadge}>
+            <RefreshCw size={10} color="white" />
+            <Text style={styles.swapText}>Swap</Text>
+          </View>
+        )}
       </View>
       
-      <View style={styles.content}>
-        <Text style={styles.title} numberOfLines={2}>{product.title}</Text>
+      <View style={[styles.content, size === 'large' && styles.largeContent]}>
+        <Text 
+          style={[styles.title, { fontSize: fonts.title }]} 
+          numberOfLines={size === 'large' ? 3 : 2}
+        >
+          {product.title}
+        </Text>
         
         <View style={styles.meta}>
           <View style={styles.ratingContainer}>
-            <Star size={12} color={colors.warning} fill={colors.warning} />
-            <Text style={styles.ratingText}>{product.rating}</Text>
-            <Text style={styles.reviewsText}>({product.reviews})</Text>
+            <Star 
+              size={size === 'large' ? 14 : 12} 
+              color={colors.warning} 
+              fill={colors.warning} 
+            />
+            <Text style={[styles.ratingText, { fontSize: fonts.rating }]}>
+              {product.rating}
+            </Text>
+            <Text style={[styles.reviewsText, { fontSize: fonts.rating }]}>
+              ({product.reviews})
+            </Text>
           </View>
         </View>
         
         <View style={styles.locationContainer}>
-          <MapPin size={12} color={colors.textSecondary} />
-          <Text style={styles.locationText} numberOfLines={1}>{product.location}</Text>
+          <MapPin 
+            size={size === 'large' ? 14 : 12} 
+            color={colors.textSecondary} 
+          />
+          <Text 
+            style={[styles.locationText, { fontSize: fonts.location }]} 
+            numberOfLines={1}
+          >
+            {product.location}
+          </Text>
         </View>
         
         <View style={styles.priceContainer}>
-          <Text style={styles.price}>${product.price}</Text>
-          <Text style={styles.priceUnit}>/{product.priceUnit}</Text>
+          <Text style={[styles.price, { fontSize: fonts.price }]}>
+            ${product.price}
+          </Text>
+          <Text style={[styles.priceUnit, { fontSize: fonts.priceUnit }]}>
+            /{product.priceUnit}
+          </Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -83,85 +171,114 @@ export default function ProductCard({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  largeContainer: {
+    borderRadius: 20,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
   },
   imageContainer: {
     position: 'relative',
   },
   image: {
     width: '100%',
-    height: 140,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   favoriteButton: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    backdropFilter: 'blur(8px)',
   },
   featuredBadge: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: 12,
+    left: 12,
     backgroundColor: colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   featuredText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'white',
+  },
+  swapBadge: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    backgroundColor: colors.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  swapText: {
     fontSize: 10,
     fontWeight: '600',
     color: 'white',
   },
   content: {
-    padding: 12,
+    padding: 14,
+  },
+  largeContent: {
+    padding: 18,
   },
   title: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 6,
-    lineHeight: 18,
+    marginBottom: 8,
+    lineHeight: 1.3,
   },
   meta: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
   },
   ratingText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.text,
   },
   reviewsText: {
-    fontSize: 12,
     color: colors.textSecondary,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
+    gap: 6,
+    marginBottom: 12,
   },
   locationText: {
-    fontSize: 11,
     color: colors.textSecondary,
     flex: 1,
   },
@@ -170,12 +287,10 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   price: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.primary,
   },
   priceUnit: {
-    fontSize: 12,
     color: colors.textSecondary,
     marginLeft: 2,
   },

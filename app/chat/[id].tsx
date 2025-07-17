@@ -8,237 +8,265 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
+  Alert,
+  Image,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, router } from 'expo-router';
+import {
+  Send,
+  Phone,
+  Video,
+  MoreHorizontal,
+  RefreshCw,
+  Check,
+  CheckCheck,
+  ArrowLeft,
+} from 'lucide-react-native';
 import { colors } from '@/constants/colors';
-import { Send, Plus, Image as ImageIcon, MapPin } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
-import { mockProducts } from '@/mocks/data';
-import { ChatMessage, Product, TextMessage } from '@/types';
+import { ChatMessage, Product, User } from '@/types';
+import useChat from '@/hooks/useChat';
+import useAuth from '@/hooks/useAuth';
+import useSwap from '@/hooks/useSwap';
 
-// Mock messages for the chat
-const generateMockMessages = (chatId: string): ChatMessage[] => {
-  const messages: ChatMessage[] = [];
-  const product = mockProducts.find(p => p.id === chatId) || mockProducts[0];
-  const now = Date.now();
-
-  // System message
-  messages.push({
+// Mock data for demo
+const mockMessages: ChatMessage[] = [
+  {
     id: '1',
     type: 'system',
-    content: 'Rental request started',
-    timestamp: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
-  });
-
-  // Product share
-  messages.push({
+    content: 'Chat started',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+  },
+  {
     id: '2',
-    type: 'product',
-    product,
-    timestamp: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
-  });
+    type: 'text',
+    content: 'Hi! Is your DJI Mavic Air 2 still available?',
+    sender: 'other',
+    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+  },
+  {
+    id: '3',
+    type: 'text',
+    content: 'Yes, it is! Are you looking to rent or swap?',
+    sender: 'user',
+    timestamp: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
+  },
+  {
+    id: '4',
+    type: 'text',
+    content: 'I have a Canon EOS R that I could swap for a few days. Would you be interested?',
+    sender: 'other',
+    timestamp: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+  },
+];
 
-  // Chat messages
-  const sampleMessages = [
-    "Hi, is this still available?",
-    "Yes, it is! When would you like to rent it?",
-    "I'm thinking next weekend. Is that possible?",
-    "Yes, that works for me. Would you like to proceed with the booking?",
-    "Great! Let me check the exact dates.",
-    "Sure, take your time. Let me know if you have any questions.",
-  ];
-
-  sampleMessages.forEach((content, index) => {
-    messages.push({
-      id: `msg-${index + 3}`,
-      type: 'text',
-      content,
-      sender: index % 2 === 0 ? 'user' : 'other',
-      timestamp: new Date(now - 1000 * 60 * (sampleMessages.length - index)).toISOString(),
-    });
-  });
-
-  return messages;
-};
-
-export default function ChatScreen() {
+export default function ChatDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>(generateMockMessages(id));
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const flatListRef = useRef<FlatList>(null);
+  const { user } = useAuth();
+  const { sendMessage, activeChat, setActiveChat } = useChat();
+  const { createSwapRequest, getUserSwappableItems } = useSwap();
   
-  const product = mockProducts.find(p => p.id === id) || mockProducts[0];
+  const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>(mockMessages);
+  const [isTyping, setIsTyping] = useState(false);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  
+  const flatListRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    const keyboardWillShow = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
-    );
-    
-    const keyboardWillHide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setKeyboardHeight(0)
-    );
-
-    return () => {
-      keyboardWillShow.remove();
-      keyboardWillHide.remove();
-    };
-  }, []);
-
-  const handleSend = () => {
-    if (!message.trim()) return;
-
-    if (Platform.OS !== 'web') {
-      Haptics.selectionAsync();
+    // Scroll to bottom when new messages arrive
+    if (messages.length > 0) {
+      flatListRef.current?.scrollToEnd({ animated: true });
     }
+  }, [messages]);
 
-    const newMessage: TextMessage = {
-      id: `msg-${Date.now()}`,
+  const sendTextMessage = () => {
+    if (!message.trim() || !id || !user) return;
+
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
       type: 'text',
       content: message.trim(),
       sender: 'user',
       timestamp: new Date().toISOString(),
     };
 
-    setMessages([...messages, newMessage]);
-    setMessage('');
+    setMessages(prev => [...prev, newMessage]);
+    sendMessage(id, {
+      type: 'text',
+      content: message.trim(),
+      sender: 'user',
+    });
 
-    // Simulate reply
-    setTimeout(() => {
-      const reply: TextMessage = {
-        id: `msg-${Date.now() + 1}`,
-        type: 'text',
-        content: "I'll get back to you shortly!",
-        sender: 'other',
-        timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, reply]);
-    }, 1000);
+    setMessage('');
+    inputRef.current?.focus();
+  };
+
+  const handleSwapProposal = () => {
+    setShowSwapModal(true);
+  };
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString();
+    }
   };
 
   const renderMessage = ({ item, index }: { item: ChatMessage; index: number }) => {
-    if (item.type === 'system') {
-      return (
-        <View style={styles.systemMessage}>
-          <Text style={styles.systemText}>{item.content}</Text>
-        </View>
-      );
-    }
-
-    if (item.type === 'product') {
-      return (
-        <View style={styles.productMessage}>
-          <Image
-            source={{ uri: item.product.images[0] }}
-            style={styles.productImage}
-            contentFit="cover"
-          />
-          <View style={styles.productInfo}>
-            <Text style={styles.productTitle} numberOfLines={2}>
-              {item.product.title}
-            </Text>
-            <Text style={styles.productPrice}>
-              ${item.product.price}/{item.product.priceUnit}
-            </Text>
-          </View>
-        </View>
-      );
-    }
-
-    const isUser = item.sender === 'user';
-    const showAvatar = !isUser && 
-      (index === messages.length - 1 || 
-       messages[index + 1].type === 'text' && 
-       (messages[index + 1] as TextMessage).sender !== item.sender);
+    const prevMessage = index > 0 ? messages[index - 1] : null;
+    const showDate = !prevMessage || 
+      new Date(item.timestamp).toDateString() !== new Date(prevMessage.timestamp).toDateString();
 
     return (
-      <View style={[
-        styles.messageRow,
-        isUser && styles.userMessageRow
-      ]}>
-        {!isUser && showAvatar && (
-          <Image
-            source={{ uri: product.owner.avatar }}
-            style={styles.avatar}
-            contentFit="cover"
-          />
+      <View>
+        {showDate && (
+          <View style={styles.dateSeparator}>
+            <Text style={styles.dateText}>{formatDate(item.timestamp)}</Text>
+          </View>
         )}
         
-        <View style={[
-          styles.messageBubble,
-          isUser ? styles.userBubble : styles.otherBubble,
-          !showAvatar && !isUser && styles.otherBubbleNoAvatar
-        ]}>
-          <Text style={[
-            styles.messageText,
-            isUser && styles.userMessageText
+        {item.type === 'system' ? (
+          <View style={styles.systemMessage}>
+            <Text style={styles.systemText}>{item.content}</Text>
+          </View>
+        ) : item.type === 'text' ? (
+          <View style={[
+            styles.messageContainer,
+            item.sender === 'user' ? styles.userMessage : styles.otherMessage
           ]}>
-            {item.content}
-          </Text>
-        </View>
+            <View style={[
+              styles.messageBubble,
+              item.sender === 'user' ? styles.userBubble : styles.otherBubble
+            ]}>
+              <Text style={[
+                styles.messageText,
+                item.sender === 'user' ? styles.userText : styles.otherText
+              ]}>
+                {item.content}
+              </Text>
+            </View>
+            <Text style={styles.messageTime}>
+              {formatTime(item.timestamp)}
+              {item.sender === 'user' && (
+                <CheckCheck size={14} color={colors.textSecondary} style={{ marginLeft: 4 }} />
+              )}
+            </Text>
+          </View>
+        ) : item.type === 'swap' ? (
+          <View style={styles.swapMessage}>
+            <View style={styles.swapHeader}>
+              <RefreshCw size={20} color={colors.secondary} />
+              <Text style={styles.swapTitle}>Swap Proposal</Text>
+            </View>
+            {/* Swap details would go here */}
+          </View>
+        ) : null}
       </View>
     );
   };
 
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity 
+        style={styles.backButton}
+        onPress={() => router.back()}
+      >
+        <ArrowLeft size={24} color={colors.text} />
+      </TouchableOpacity>
+      
+      <View style={styles.headerInfo}>
+        <Image
+          source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop' }}
+          style={styles.headerAvatar}
+        />
+        <View style={styles.headerText}>
+          <Text style={styles.headerName}>Alex Johnson</Text>
+          <Text style={styles.headerStatus}>
+            {isTyping ? 'Typing...' : 'Online'}
+          </Text>
+        </View>
+      </View>
+      
+      <View style={styles.headerActions}>
+        <TouchableOpacity style={styles.headerButton}>
+          <Phone size={20} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.headerButton}>
+          <Video size={20} color={colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.headerButton}>
+          <MoreHorizontal size={20} color={colors.text} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <>
-      <Stack.Screen 
-        options={{
-          title: product.owner.name,
-          headerTitleStyle: {
-            fontSize: 16,
-          },
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
       
       <KeyboardAvoidingView 
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+        {renderHeader()}
+        
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
           keyExtractor={item => item.id}
-          contentContainerStyle={styles.messageList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-          onLayout={() => flatListRef.current?.scrollToEnd()}
+          contentContainerStyle={styles.messagesList}
+          showsVerticalScrollIndicator={false}
         />
         
-        <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Plus size={24} color={colors.primary} />
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity 
+            style={styles.swapButton}
+            onPress={handleSwapProposal}
+          >
+            <RefreshCw size={16} color={colors.background} />
+            <Text style={styles.swapButtonText}>Propose Swap</Text>
           </TouchableOpacity>
-          
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.input}
-              placeholder="Type a message..."
-              placeholderTextColor={colors.textSecondary}
-              value={message}
-              onChangeText={setMessage}
-              multiline
-            />
-            
-            <TouchableOpacity 
-              style={[
-                styles.sendButton,
-                !message.trim() && styles.sendButtonDisabled
-              ]}
-              onPress={handleSend}
-              disabled={!message.trim()}
-            >
-              <Send 
-                size={20} 
-                color={message.trim() ? 'white' : colors.textSecondary} 
-              />
-            </TouchableOpacity>
-          </View>
+        </View>
+        
+        {/* Message Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            ref={inputRef}
+            style={styles.textInput}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.textSecondary}
+            value={message}
+            onChangeText={setMessage}
+            multiline
+            maxLength={500}
+          />
+          <TouchableOpacity 
+            style={[
+              styles.sendButton,
+              message.trim() ? styles.sendButtonActive : styles.sendButtonInactive
+            ]}
+            onPress={sendTextMessage}
+            disabled={!message.trim()}
+          >
+            <Send size={20} color={message.trim() ? colors.background : colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </>
@@ -250,130 +278,187 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  messageList: {
-    padding: 16,
-  },
-  messageRow: {
+  header: {
     flexDirection: 'row',
-    marginBottom: 16,
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingTop: 50,
+    backgroundColor: colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  userMessageRow: {
-    justifyContent: 'flex-end',
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  backButton: {
+    padding: 8,
     marginRight: 8,
   },
-  messageBubble: {
-    maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
+  headerInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  userBubble: {
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: 4,
+  headerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
   },
-  otherBubble: {
-    backgroundColor: colors.card,
-    borderBottomLeftRadius: 4,
-    marginLeft: 40,
+  headerText: {
+    flex: 1,
   },
-  otherBubbleNoAvatar: {
-    marginLeft: 40,
-  },
-  messageText: {
+  headerName: {
     fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
   },
-  userMessageText: {
-    color: 'white',
+  headerStatus: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: colors.backgroundSecondary,
+  },
+  messagesList: {
+    paddingVertical: 16,
+  },
+  dateSeparator: {
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  dateText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    backgroundColor: colors.backgroundSecondary,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   systemMessage: {
     alignItems: 'center',
-    marginVertical: 16,
+    marginVertical: 8,
   },
   systemText: {
     fontSize: 12,
     color: colors.textSecondary,
-    backgroundColor: colors.card,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    fontStyle: 'italic',
   },
-  productMessage: {
+  messageContainer: {
+    marginVertical: 2,
+    paddingHorizontal: 16,
+  },
+  userMessage: {
+    alignItems: 'flex-end',
+  },
+  otherMessage: {
+    alignItems: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  userBubble: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 6,
+  },
+  otherBubble: {
+    backgroundColor: colors.backgroundSecondary,
+    borderBottomLeftRadius: 6,
+  },
+  messageText: {
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  userText: {
+    color: colors.background,
+  },
+  otherText: {
+    color: colors.text,
+  },
+  messageTime: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+    marginHorizontal: 4,
+  },
+  swapMessage: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: colors.sky[50],
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.sky[200],
+  },
+  swapHeader: {
     flexDirection: 'row',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginVertical: 16,
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
-  productImage: {
-    width: 80,
-    height: 80,
-  },
-  productInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'center',
-  },
-  productTitle: {
-    fontSize: 14,
+  swapTitle: {
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
   },
-  productPrice: {
+  quickActions: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  swapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.secondary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    gap: 8,
+  },
+  swapButtonText: {
     fontSize: 14,
-    color: colors.primary,
     fontWeight: '600',
+    color: colors.background,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 16,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.background,
   },
-  attachButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    justifyContent: 'center',
-    alignItems: 'center',
+  textInput: {
+    flex: 1,
+    maxHeight: 100,
+    backgroundColor: colors.backgroundSecondary,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.text,
     marginRight: 12,
   },
-  inputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: colors.card,
-    borderRadius: 22,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    maxHeight: 100,
-    color: colors.text,
-    marginRight: 8,
-    paddingTop: 4,
-  },
   sendButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sendButtonDisabled: {
-    backgroundColor: colors.card,
+  sendButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  sendButtonInactive: {
+    backgroundColor: colors.backgroundSecondary,
   },
 });
